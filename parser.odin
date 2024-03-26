@@ -88,7 +88,7 @@ parser_parse_token :: proc(using p: ^Parser, t: Token) -> Maybe(ParseResult) {
             return ParseResult{.KeyWithoutEquals, t.pos}
         }
 
-        key := strings.clone(strings.to_lower(string(t.value)))
+        key := strings.clone(string(t.value))
 
         value := lexer_next(lexer)
         if value.type != .Value {
@@ -100,8 +100,8 @@ parser_parse_token :: proc(using p: ^Parser, t: Token) -> Maybe(ParseResult) {
         curr_section[key] = strings.clone(string(value.value))
     case .Section:
         #no_bounds_check no_brackets := t.value[1:len(t.value) - 1]
-        key := strings.to_lower(string(no_brackets))
-        if !(string(key) in curr_section) {
+        key := string(no_brackets)
+        if !(key in curr_section) {
             ini[strings.clone(key)] = map[string]string{}
         }
         curr_section = &ini[key]
