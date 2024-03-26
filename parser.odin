@@ -1,8 +1,6 @@
 package ini
 
 import "core:strings"
-import "core:unicode"
-import "core:unicode/utf8"
 
 // INI is a map from section to a map from key to values.
 // Pairs defined before the first section are put into the "" key: INI[""].
@@ -90,7 +88,7 @@ parser_parse_token :: proc(using p: ^Parser, t: Token) -> Maybe(ParseResult) {
             return ParseResult{.KeyWithoutEquals, t.pos}
         }
 
-        key := strings.clone(string(to_lower(t.value)))
+        key := strings.clone(strings.to_lower(string(t.value)))
 
         value := lexer_next(lexer)
         if value.type != .Value {
@@ -102,7 +100,7 @@ parser_parse_token :: proc(using p: ^Parser, t: Token) -> Maybe(ParseResult) {
         curr_section[key] = strings.clone(string(value.value))
     case .Section:
         #no_bounds_check no_brackets := t.value[1:len(t.value) - 1]
-        key := string(to_lower(no_brackets))
+        key := strings.to_lower(string(no_brackets))
         if !(string(key) in curr_section) {
             ini[strings.clone(key)] = map[string]string{}
         }
@@ -118,23 +116,5 @@ parser_parse_token :: proc(using p: ^Parser, t: Token) -> Maybe(ParseResult) {
     }
 
     return nil
-}
-
-@(private = "file")
-to_lower :: proc(s: []byte) -> []byte {
-    s, i, n := s, 0, len(s)
-
-    for i < n {
-        ch, ch_size := utf8.decode_rune(s[i:])
-        i += ch_size
-
-        lower_ch := unicode.to_lower(ch)
-        if ch != lower_ch {
-            lower_bytes := transmute([4]byte)lower_ch
-            copy(s[i - 1:], lower_bytes[:ch_size])
-        }
-    }
-
-    return s
 }
 
