@@ -90,14 +90,24 @@ parser_parse_token :: proc(using p: ^Parser, t: Token) -> Maybe(ParseResult) {
 
         key := strings.clone(string(t.value))
 
-        value := lexer_next(lexer)
-        if value.type != .Value {
-            // No value, value is empty string.
-            curr_section[key] = ""
-            return parser_parse_token(p, value)
+        value_buf: strings.Builder
+
+        // Parse all values and add it to the current key
+        value: Token = ---
+        for value = lexer_next(lexer);
+            value.type == .Value;
+            value = lexer_next(lexer) {
+            strings.write_string(&value_buf, string(value.value))
+            strings.write_rune(&value_buf, ' ')
         }
 
-        curr_section[key] = strings.clone(string(value.value))
+        // Trim the trailing whitepsace character
+        value_str := strings.to_string(value_buf)
+        value_str = value_str[:len(value_str) - 1]
+
+        curr_section[key] = value_str
+
+        return parser_parse_token(p, value)
     case .Section:
         #no_bounds_check no_brackets := t.value[1:len(t.value) - 1]
         key := string(no_brackets)
