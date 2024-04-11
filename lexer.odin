@@ -79,7 +79,7 @@ lexer_next :: proc(using l: ^Lexer) -> Token {
     case ch == '"' || ch == '\'':
         t.type = .Value
         if s, is_terminated := lexer_read_until(l, ch); is_terminated {
-            t.value = data[s + 1:bytes_cursor - 1]
+            t.value = data[s:bytes_cursor]
         } else {
             t.value = data[s:bytes_cursor - 1]
         }
