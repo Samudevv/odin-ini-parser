@@ -2,21 +2,76 @@ package ini
 
 import "core:strings"
 
+INIValue :: struct {
+    key:   string,
+    value: string,
+}
+
+INISection :: struct {
+    name:   string,
+    values: [dynamic]INIValue,
+}
+
 // INI is a map from section to a map from key to values.
 // Pairs defined before the first section are put into the "" key: INI[""].
-INI :: map[string]map[string]string
+INI :: [dynamic]INISection
 
-ini_delete :: proc(i: ^INI) {
-    for k, v in i {
-        for kk, vv in v {
-            delete(kk)
-            delete(vv)
+ini_section :: proc(
+    i: ^INI,
+    section_name: string,
+) -> (
+    ^INISection,
+    bool,
+) #optional_ok {
+    for &sec in i {
+        if sec.name == section_name {
+            return &sec, true
         }
-
-        delete(k)
-        delete(v)
     }
 
+    return nil, false
+}
+
+ini_delete_section :: proc(i: ^INI, section_name: string) {
+    for sec, idx in i {
+        if sec.name == section_name {
+            delete(sec.name)
+            for v in sec.values {
+                delete(v.key)
+                delete(v.value)
+            }
+            delete(sec.values)
+            ordered_remove(i, idx)
+            return
+        }
+    }
+}
+
+ini_value :: proc(
+    sec: ^INISection,
+    key: string,
+) -> (
+    string,
+    bool,
+) #optional_ok {
+    for v in sec.values {
+        if v.key == key {
+            return v.value, true
+        }
+    }
+
+    return "", false
+}
+
+ini_delete :: proc(i: ^INI) {
+    for sec in i {
+        delete(sec.name)
+        for value in sec.values {
+            delete(value.key)
+            delete(value.value)
+        }
+        delete(sec.values)
+    }
     delete(i^)
 }
 
@@ -37,7 +92,7 @@ ParseResult :: struct {
 Parser :: struct {
     lexer:        ^Lexer,
     ini:          ^INI,
-    curr_section: ^map[string]string,
+    curr_section: ^INISection,
 }
 
 make_parser :: proc(l: ^Lexer, ini: ^INI) -> Parser {
@@ -45,10 +100,10 @@ make_parser :: proc(l: ^Lexer, ini: ^INI) -> Parser {
     p.lexer = l
     p.ini = ini
 
-    if !("" in p.ini) {
-        p.ini[""] = map[string]string{}
+    if len(p.ini) == 0 || p.ini[0].name != "" {
+        append(p.ini, INISection{name = ""})
     }
-    p.curr_section = &p.ini[""]
+    p.curr_section = &p.ini[0]
 
     return p
 }
@@ -105,16 +160,18 @@ parser_parse_token :: proc(using p: ^Parser, t: Token) -> Maybe(ParseResult) {
         value_str := strings.to_string(value_buf)
         value_str = value_str[:len(value_str) - 1]
 
-        curr_section[key] = value_str
+        append(&curr_section.values, INIValue{key = key, value = value_str})
 
         return parser_parse_token(p, value)
     case .Section:
         #no_bounds_check no_brackets := t.value[1:len(t.value) - 1]
         key := string(no_brackets)
-        if !(key in curr_section) {
-            ini[strings.clone(key)] = map[string]string{}
+        if sec, ok := ini_section(ini, key); ok {
+            curr_section = sec
+        } else {
+            append(ini, INISection{name = strings.clone(key)})
+            curr_section = &ini[len(ini) - 1]
         }
-        curr_section = &ini[key]
     case .Value:
         return ParseResult{.ValueWithoutKey, t.pos}
     case .Assign:
@@ -127,4 +184,3 @@ parser_parse_token :: proc(using p: ^Parser, t: Token) -> Maybe(ParseResult) {
 
     return nil
 }
-
