@@ -134,53 +134,63 @@ parser_parse :: proc(using p: ^Parser) -> ParseResult {
 
 @(private = "file")
 parser_parse_token :: proc(using p: ^Parser, t: Token) -> Maybe(ParseResult) {
-    switch t.type {
-    case .Illegal:
-        return ParseResult{.IllegalToken, t.pos}
-    case .Key:
-        assignment := lexer_next(lexer)
-        if assignment.type != .Assign {
-            return ParseResult{.KeyWithoutEquals, t.pos}
+    token := t
+    for {
+        switch token.type {
+        case .Illegal:
+            return ParseResult{.IllegalToken, token.pos}
+        case .Key:
+            assignment := lexer_next(lexer)
+            if assignment.type != .Assign {
+                return ParseResult{.KeyWithoutEquals, token.pos}
+            }
+
+            key := strings.clone(string(token.value))
+
+            value_buf: strings.Builder
+
+            // Parse all values and add it to the current key
+            value: Token = ---
+            for value = lexer_next(lexer);
+                value.type == .Value;
+                value = lexer_next(lexer) {
+                strings.write_string(&value_buf, string(value.value))
+                strings.write_rune(&value_buf, ' ')
+            }
+
+            // Trim the trailing whitepsace character
+            value_str := strings.to_string(value_buf)
+            value_str = value_str[:len(value_str) - 1]
+
+            append(
+                &curr_section.values,
+                INIValue{key = key, value = value_str},
+            )
+
+            token = value
+            continue
+        case .Section:
+            #no_bounds_check no_brackets := token.value[1:len(token.value) - 1]
+            key := string(no_brackets)
+            if sec, ok := ini_section(ini, key); ok {
+                curr_section = sec
+            } else {
+                append(ini, INISection{name = strings.clone(key)})
+                curr_section = &ini[len(ini) - 1]
+            }
+
+            return nil
+        case .Value:
+            return ParseResult{.ValueWithoutKey, token.pos}
+        case .Assign:
+            return ParseResult{.UnexpectedEquals, token.pos}
+        // Ignoring comments.
+        case .Comment:
+        case .EOF:
+            return ParseResult{.EOF, token.pos}
         }
-
-        key := strings.clone(string(t.value))
-
-        value_buf: strings.Builder
-
-        // Parse all values and add it to the current key
-        value: Token = ---
-        for value = lexer_next(lexer);
-            value.type == .Value;
-            value = lexer_next(lexer) {
-            strings.write_string(&value_buf, string(value.value))
-            strings.write_rune(&value_buf, ' ')
-        }
-
-        // Trim the trailing whitepsace character
-        value_str := strings.to_string(value_buf)
-        value_str = value_str[:len(value_str) - 1]
-
-        append(&curr_section.values, INIValue{key = key, value = value_str})
-
-        return parser_parse_token(p, value)
-    case .Section:
-        #no_bounds_check no_brackets := t.value[1:len(t.value) - 1]
-        key := string(no_brackets)
-        if sec, ok := ini_section(ini, key); ok {
-            curr_section = sec
-        } else {
-            append(ini, INISection{name = strings.clone(key)})
-            curr_section = &ini[len(ini) - 1]
-        }
-    case .Value:
-        return ParseResult{.ValueWithoutKey, t.pos}
-    case .Assign:
-        return ParseResult{.UnexpectedEquals, t.pos}
-    // Ignoring comments.
-    case .Comment:
-    case .EOF:
-        return ParseResult{.EOF, t.pos}
     }
 
     return nil
 }
+
